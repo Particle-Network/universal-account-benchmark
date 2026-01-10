@@ -383,107 +383,54 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
 
         const { chainId, address } = getTradeToken(targetChain);
 
-        if (targetChain === 'SOLANA') {
-            const getTokenPairStartTime = performance.now();
-            const tokenPair = (await universalAccount.getTokenPair({
-                chainId,
-                address,
-            })).pair;
-            const getTokenPairEndTime = performance.now();
-            const getTokenPairDuration = getTokenPairEndTime - getTokenPairStartTime;
-            tokenPairDurations.push(getTokenPairDuration);
+        const getTokenPairStartTime = performance.now();
+        const tokenPair = (await universalAccount.getTokenPair({
+            chainId,
+            address,
+        })).pair;
+        const getTokenPairEndTime = performance.now();
+        const getTokenPairDuration = getTokenPairEndTime - getTokenPairStartTime;
+        tokenPairDurations.push(getTokenPairDuration);
 
-            const createBuyStartTime = performance.now();
-            const transaction = await universalAccount.createBuyTransaction(
-                {
-                    token: { chainId, address },
-                    amountInUSD: '0.001',
-                },
-                {
-                    addressLookupTableAccountAddresses: [],
-                    tokenPair,
-                },
-            );
-            const createBuyEndTime = performance.now();
-            const createBuyDuration = createBuyEndTime - createBuyStartTime;
-            createBuyDurations.push(createBuyDuration);
+        const createBuyStartTime = performance.now();
+        const transaction = await universalAccount.createBuyTransaction(
+            {
+                token: { chainId, address },
+                amountInUSD: '0.001',
+            },
+            {
+                tokenPair,
+            },
+        );
+        const createBuyEndTime = performance.now();
+        const createBuyDuration = createBuyEndTime - createBuyStartTime;
+        createBuyDurations.push(createBuyDuration);
 
-            console.log(`  createBuyTransaction: ${createBuyDuration.toFixed(2)}ms`);
+        console.log(`  createBuyTransaction: ${createBuyDuration.toFixed(2)}ms`);
 
-            sendStartTime = performance.now();
+        sendStartTime = performance.now();
 
-            // Handle 7702 Authorization
-            const authorizations: EIP7702Authorization[] = [];
-            for (const userOp of transaction.userOps as any) {
-                if (!!userOp.eip7702Auth && !userOp.eip7702Delegated) {
-                    const authorization = wallet.authorizeSync(userOp.eip7702Auth);
-                    authorizations.push({
-                        userOpHash: userOp.userOpHash,
-                        signature: authorization.signature.serialized,
-                    });
-                }
+        // Handle 7702 Authorization
+        const authorizations: EIP7702Authorization[] = [];
+        for (const userOp of transaction.userOps) {
+            if (!!userOp.eip7702Auth && !userOp.eip7702Delegated) {
+                const authorization = wallet.authorizeSync(userOp.eip7702Auth);
+                authorizations.push({
+                    userOpHash: userOp.userOpHash,
+                    signature: authorization.signature.serialized,
+                });
             }
+        }
 
-            sendResult = await universalAccountForSendTransaction.sendTransaction(transaction, wallet.signMessageSync(getBytes(transaction.rootHash)), authorizations);
-            const sendEndTime = performance.now();
-            const sendDuration = sendEndTime - sendStartTime;
-            sendDurations.push(sendDuration);
+        sendResult = await universalAccountForSendTransaction.sendTransaction(transaction, wallet.signMessageSync(getBytes(transaction.rootHash)), authorizations);
+        const sendEndTime = performance.now();
+        const sendDuration = sendEndTime - sendStartTime;
+        sendDurations.push(sendDuration);
+        console.log(`  sendTransaction: ${sendDuration.toFixed(2)}ms, status: ${sendResult.status}`);
 
-            console.log(`  sendTransaction: ${sendDuration.toFixed(2)}ms`);
-            if (i === 0) {
-                console.log(`  Explorer URL: ${getExplorerUrl(sendResult.transactionId)}`);
-                console.log('');
-            }
-        } else {
-            const getTokenPairStartTime = performance.now();
-            const tokenPair = (await universalAccount.getTokenPair({
-                chainId,
-                address,
-            })).pair;
-            const getTokenPairEndTime = performance.now();
-            const getTokenPairDuration = getTokenPairEndTime - getTokenPairStartTime;
-            tokenPairDurations.push(getTokenPairDuration);
-
-            const createBuyStartTime = performance.now();
-            const transaction = await universalAccount.createBuyTransaction(
-                {
-                    token: { chainId, address },
-                    amountInUSD: '0.001',
-                },
-                {
-                    tokenPair,
-                },
-            );
-            const createBuyEndTime = performance.now();
-            const createBuyDuration = createBuyEndTime - createBuyStartTime;
-            createBuyDurations.push(createBuyDuration);
-
-            console.log(`  createBuyTransaction: ${createBuyDuration.toFixed(2)}ms`);
-
-            sendStartTime = performance.now();
-
-            // Handle 7702 Authorization
-            const authorizations: EIP7702Authorization[] = [];
-            for (const userOp of transaction.userOps) {
-                if (!!userOp.eip7702Auth && !userOp.eip7702Delegated) {
-                    const authorization = wallet.authorizeSync(userOp.eip7702Auth);
-                    authorizations.push({
-                        userOpHash: userOp.userOpHash,
-                        signature: authorization.signature.serialized,
-                    });
-                }
-            }
-
-            sendResult = await universalAccountForSendTransaction.sendTransaction(transaction, wallet.signMessageSync(getBytes(transaction.rootHash)), authorizations);
-            const sendEndTime = performance.now();
-            const sendDuration = sendEndTime - sendStartTime;
-            sendDurations.push(sendDuration);
-            console.log(`  sendTransaction: ${sendDuration.toFixed(2)}ms`);
-
-            if (i === 0) {
-                console.log(`  Explorer URL: ${getExplorerUrl(sendResult.transactionId)}`);
-                console.log('');
-            }
+        if (i === 0) {
+            console.log(`  Explorer URL: ${getExplorerUrl(sendResult.transactionId)}`);
+            console.log('');
         }
 
         const noNeedToPoll = sendResult.status === 7 || sendResult.status === 11;
