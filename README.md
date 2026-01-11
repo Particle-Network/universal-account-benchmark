@@ -47,7 +47,7 @@ Source Chain: SOLANA , Target Chain: BASE
 
 - Transaction speed testing for Universal Account
 - Support for multiple chains (Solana, BSC, Base, Ethereum, etc.)
-- WebSocket support for faster transaction confirmation
+- **Dual confirmation mode**: WebSocket and polling race simultaneously, whichever completes first wins
 - Statistical analysis of transaction times
 - Classic and EIP-7702 mode support
 
@@ -89,9 +89,6 @@ npm start -- --uaMode=7702 --runTimes=10
 # Test on different chains
 npm start -- --sourceChain=solana --targetChain=bsc --runTimes=5
 
-# Enable WebSocket mode for faster confirmation
-npm start -- --wssMode=true --runTimes=5
-
 # Adjust fee rate and MEV settings
 npm start -- --feeRate=2 --bribeAmount=0.001 --mevProtection=1
 
@@ -113,7 +110,6 @@ npm start -- --help
 - `--feeRate=<number>`: Priority fee rate (default: 1)
 - `--bribeAmount=<number>`: Solana MEV tip amount (default: 0)
 - `--mevProtection=<number>`: MEV protection level (default: 2)
-- `--wssMode=<true|false>`: Use WebSocket for status updates (default: false)
 - `--help, -h`: Show help message
 
 ## Supported Chains
@@ -145,7 +141,7 @@ The benchmark measures the following timing metrics:
 1. **getTokenPair**: Time to fetch token pair information
 2. **createBuyTransaction**: Time to create buy transaction
 3. **sendTransaction**: Time to send transaction
-4. **getTransaction**: Time to confirm transaction (via polling or WebSocket)
+4. **getTransaction**: Time to confirm transaction (WSS and polling race simultaneously, prints which method won)
 5. **sendTransactionTotal**: Total time from send to confirmation
 
 Statistics provided for each metric:
@@ -160,6 +156,7 @@ Statistics provided for each metric:
 ```
 ---- Using RPC -  https://universal-rpc-proxy.particle.network ----
 ---- Using WSS -  wss://universal-app-ws-proxy.particle.network ----
+---- Creating WSS connection for racing with polling ----
 Running benchmark 5 time(s)...
 
 Your UA EVM Address: 0x...
@@ -170,8 +167,15 @@ Run 1/5:
   sendTransaction: 234.56ms
   Explorer URL: https://universalx.app/activity/details?id=...
   
-  getTransaction: 2345.67ms
+  getTransaction: 2345.67ms (used: wss)
   sendTransactionTotal: 2580.23ms
+  ...
+
+Run 2/5:
+  createBuyTransaction: 1100.00ms
+  sendTransaction: 200.00ms
+  getTransaction: 1800.00ms (used: polling)
+  sendTransactionTotal: 2000.00ms
   ...
 
 getTokenPair Statistics:
@@ -182,6 +186,9 @@ getTokenPair Statistics:
   Max: 1280.00ms
   Std Dev: 25.34ms
   ...
+
+Source Chain: SOLANA , Target Chain: SOLANA
+Using RPC: https://universal-rpc-proxy.particle.network , Fee Rate: 1 , Bribe Amount: 0 , Mode: WSS+Polling Race
 ```
 
 ## Development

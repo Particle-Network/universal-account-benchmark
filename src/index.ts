@@ -312,7 +312,6 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     const targetChain = args.targetChain;
     const feeRate = args.feeRate;
     const bribeAmount = args.bribeAmount;
-    const wssMode = args.wssMode;
 
     const rpcUrl = getRpcUrl();
     const wssUrl = getWssUrl();
@@ -364,16 +363,13 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     const getTransactionDurations: number[] = [];
     const sendTotalDurations: number[] = [];
 
-    // Create WSS connection before transactions if wssMode is enabled
-    let wssConnection: ReturnType<typeof createWssConnection> | null = null;
-    if (wssMode) {
-        console.log('---- Enabling WSS Mode ----');
-        const addresses: string[] = [
-            smartAccountOptions.smartAccountAddress,
-            smartAccountOptions.solanaSmartAccountAddress,
-        ].filter((addr): addr is string => typeof addr === 'string');
-        wssConnection = createWssConnection(wssUrl, addresses);
-    }
+    // Create WSS connection before transactions (always enabled for racing)
+    console.log('---- Creating WSS connection for racing with polling ----');
+    const addresses: string[] = [
+        smartAccountOptions.smartAccountAddress,
+        smartAccountOptions.solanaSmartAccountAddress,
+    ].filter((addr): addr is string => typeof addr === 'string');
+    const wssConnection = createWssConnection(wssUrl, addresses);
 
     for (let i = 0; i < runTimes; i++) {
         console.log(`Run ${i + 1}/${runTimes}:`);
@@ -435,28 +431,29 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
 
         const noNeedToPoll = sendResult.status === 7 || sendResult.status === 11;
 
-        // Wait for transaction completion via WSS or polling
+        // Wait for transaction completion via WSS and polling race
         const getTransactionStartTime = performance.now();
+        let usedMethod = 'already completed';
         if (!noNeedToPoll) {
-            if (wssMode && wssConnection) {
-                // Use WSS to wait for transaction update
-                await wssConnection.waitForTransaction(sendResult.transactionId);
-            } else {
-                // Long polling to get transaction detail until status is 7 or 11
+            // Race between WSS and polling - whichever completes first wins
+            const pollingPromise = (async () => {
                 while (true) {
                     const transactionDetail = await universalAccount.getTransaction(sendResult.transactionId);
                     if (transactionDetail && (transactionDetail.status === 7 || transactionDetail.status === 11)) {
-                        break;
+                        return 'polling';
                     }
                     // 250ms is the minimum time between requests
                     await new Promise(resolve => setTimeout(resolve, 250));
                 }
-            }
+            })();
+
+            const wssPromise = wssConnection.waitForTransaction(sendResult.transactionId).then(() => 'wss' as const);
+            usedMethod = await Promise.race([wssPromise, pollingPromise]);
         }
         const getTransactionEndTime = performance.now();
         const getTransactionDuration = getTransactionEndTime - getTransactionStartTime;
         getTransactionDurations.push(getTransactionDuration);
-        console.log(`  getTransaction${wssMode ? ' (WSS)' : ''}: ${getTransactionDuration.toFixed(2)}ms`);
+        console.log(`  getTransaction: ${getTransactionDuration.toFixed(2)}ms (used: ${usedMethod})`);
 
         const sendTotalDuration = getTransactionEndTime - sendStartTime;
         sendTotalDurations.push(sendTotalDuration);
@@ -470,9 +467,7 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     }
 
     // Cleanup WSS connection
-    if (wssConnection) {
-        wssConnection.close();
-    }
+    wssConnection.close();
 
     const tokenPairStats = calculateStats(tokenPairDurations);
     const createBuyStats = calculateStats(createBuyDurations);
@@ -488,5 +483,5 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
 
     console.log('');
     console.log('Source Chain:', sourceChain, ', Target Chain:', targetChain);
-    console.log('Using RPC:', rpcUrl, ', Fee Rate:', feeRate, ', Bribe Amount:', bribeAmount, ', WSS Mode:', wssMode);
+    console.log('Using RPC:', rpcUrl, ', Fee Rate:', feeRate, ', Bribe Amount:', bribeAmount, ', Mode: WSS+Polling Race');
 })();
