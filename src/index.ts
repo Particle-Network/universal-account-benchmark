@@ -423,11 +423,8 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
         const sendDuration = sendEndTime - sendStartTime;
         sendDurations.push(sendDuration);
         console.log(`  sendTransaction: ${sendDuration.toFixed(2)}ms, status: ${sendResult.status}`);
-
-        if (i === 0) {
-            console.log(`  Explorer URL: ${getExplorerUrl(sendResult.transactionId)}`);
-            console.log('');
-        }
+        console.log(`  Explorer URL: ${getExplorerUrl(sendResult.transactionId)}`);
+        console.log('');
 
         const noNeedToPoll = sendResult.status === 7 || sendResult.status === 11;
 
