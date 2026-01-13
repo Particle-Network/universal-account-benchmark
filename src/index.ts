@@ -457,8 +457,8 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
         console.log(`  sendTransactionTotal: ${sendTotalDuration.toFixed(2)}ms`);
 
         // avoid blocksyncing error, not required for production
-        console.log('  Waiting 2 seconds to avoid blocksyncing error...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        console.log('  Waiting 5 seconds to avoid blocksyncing error...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
     // Cleanup WSS connection
