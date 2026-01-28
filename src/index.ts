@@ -357,7 +357,7 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     console.log('Your UA Solana Address:', smartAccountOptions.solanaSmartAccountAddress);
     console.log('');
 
-    const tokenPairDurations: number[] = [];
+    const warmupDurations: number[] = [];
     const createBuyDurations: number[] = [];
     const sendDurations: number[] = [];
     const getTransactionDurations: number[] = [];
@@ -379,23 +379,21 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
 
         const { chainId, address } = getTradeToken(targetChain);
 
-        const getTokenPairStartTime = performance.now();
-        const tokenPair = (await universalAccount.getTokenPair({
+        const warmupStartTime = performance.now();
+        // warm up token to avoid cold start, for production, you can warm up the token in the background every 1s
+        await universalAccount.warmUpToken({
             chainId,
             address,
-        })).pair;
-        const getTokenPairEndTime = performance.now();
-        const getTokenPairDuration = getTokenPairEndTime - getTokenPairStartTime;
-        tokenPairDurations.push(getTokenPairDuration);
+        });
+        const warmupEndTime = performance.now();
+        const warmupDuration = warmupEndTime - warmupStartTime;
+        warmupDurations.push(warmupDuration);
 
         const createBuyStartTime = performance.now();
         const transaction = await universalAccount.createBuyTransaction(
             {
                 token: { chainId, address },
                 amountInUSD: '0.001',
-            },
-            {
-                tokenPair,
             },
         );
         const createBuyEndTime = performance.now();
@@ -464,13 +462,13 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     // Cleanup WSS connection
     wssConnection.close();
 
-    const tokenPairStats = calculateStats(tokenPairDurations);
+    const warmupStats = calculateStats(warmupDurations);
     const createBuyStats = calculateStats(createBuyDurations);
     const sendStats = calculateStats(sendDurations);
     const getTransactionStats = calculateStats(getTransactionDurations);
     const sendTotalStats = calculateStats(sendTotalDurations);
 
-    printStats('getTokenPair', tokenPairStats);
+    printStats('warmup', warmupStats);
     printStats('createBuyTransaction', createBuyStats);
     printStats('sendTransaction', sendStats);
     printStats('getTransaction', getTransactionStats);
