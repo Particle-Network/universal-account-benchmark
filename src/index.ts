@@ -368,9 +368,16 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     console.log(`getSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
     console.log('');
 
+    const getPrimaryAssetsStartTime = performance.now();
+    const primaryAssets = await universalAccount.getPrimaryAssets();
+    const getPrimaryAssetsDuration = performance.now() - getPrimaryAssetsStartTime;
+    console.log(`getPrimaryAssets: ${getPrimaryAssetsDuration.toFixed(2)}ms, totalAmountInUSD: $${primaryAssets.totalAmountInUSD.toFixed(4)}`);
+    console.log('');
+
     if (runTimes === 0) {
         console.log('runTimes=0, skipping transaction tests.');
         console.log(`\ngetSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
+        console.log(`getPrimaryAssets: ${getPrimaryAssetsDuration.toFixed(2)}ms`);
         return;
     }
 
@@ -489,6 +496,7 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     const sendTotalStats = calculateStats(sendTotalDurations);
 
     console.log(`\ngetSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
+    console.log(`getPrimaryAssets: ${getPrimaryAssetsDuration.toFixed(2)}ms`);
 
     if (args.warmup) {
         const warmupStats = calculateStats(warmupDurations);
