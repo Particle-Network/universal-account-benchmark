@@ -14,6 +14,7 @@ interface CommandLineArgs {
     mevProtection?: number;
     bribeAmount: number;
     wssMode: boolean;
+    warmup: boolean;
     help?: boolean;
 }
 
@@ -22,12 +23,13 @@ function parseCommandLineArgs(): CommandLineArgs {
     const parsed: CommandLineArgs = {
         uaMode: 'classic',
         runTimes: 1,
-        sourceChain: 'solana',
-        targetChain: 'solana',
+        sourceChain: 'SOLANA',
+        targetChain: 'SOLANA',
         feeRate: 1,
         mevProtection: 2,
         bribeAmount: 0,
         wssMode: false,
+        warmup: true,
     };
 
     for (const arg of args) {
@@ -45,7 +47,8 @@ function parseCommandLineArgs(): CommandLineArgs {
                     parsed.uaMode = value.toLowerCase() as 'classic' | '7702';
                     break;
                 case 'runTimes':
-                    parsed.runTimes = parseInt(value, 10) || 1;
+                    const parsedRunTimes = parseInt(value, 10);
+                    parsed.runTimes = isNaN(parsedRunTimes) ? 1 : parsedRunTimes;
                     break;
                 case 'sourceChain':
                     parsed.sourceChain = value.toUpperCase();
@@ -64,6 +67,9 @@ function parseCommandLineArgs(): CommandLineArgs {
                     break;
                 case 'wssMode':
                     parsed.wssMode = value.toLowerCase() === 'true';
+                    break;
+                case 'warmup':
+                    parsed.warmup = value.toLowerCase() !== 'false';
                     break;
                 default:
                     console.warn(`Unknown argument: --${key}`);
@@ -91,6 +97,7 @@ Options:
   --bribeAmount=<number>      Solana MEV tip amount (default: 0)
   --mevProtection=<number>    MEV protection level (default: 2)
   --wssMode=<true|false>      Use WebSocket for transaction status updates (default: false)
+  --warmup=<true|false>       Enable token warmup before transactions (default: true)
   --help, -h                  Show this help message
 
 Examples:
@@ -102,6 +109,7 @@ Examples:
   npm start -- --runTimes=3 --sourceChain=solana --feeRate=2 --bribeAmount=0.001 --mevProtection=1
   npm start -- --runTimes=3 --sourceChain=solana --targetChain=bsc --mevProtection=1
   npm start -- --runTimes=3 --sourceChain=solana --wssMode=true
+  npm start -- --runTimes=3 --sourceChain=solana --warmup=false
 `);
 }
 
@@ -352,10 +360,19 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
         rpcUrl: rpcUrl + '?method=sendTransaction',
     });
 
+    const getSmartAccountOptionsStartTime = performance.now();
     const smartAccountOptions = await universalAccount.getSmartAccountOptions();
+    const getSmartAccountOptionsDuration = performance.now() - getSmartAccountOptionsStartTime;
     console.log('Your UA EVM Address:', smartAccountOptions.smartAccountAddress);
     console.log('Your UA Solana Address:', smartAccountOptions.solanaSmartAccountAddress);
+    console.log(`getSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
     console.log('');
+
+    if (runTimes === 0) {
+        console.log('runTimes=0, skipping transaction tests.');
+        console.log(`\ngetSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
+        return;
+    }
 
     const warmupDurations: number[] = [];
     const createBuyDurations: number[] = [];
@@ -379,15 +396,19 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
 
         const { chainId, address } = getTradeToken(targetChain);
 
-        const warmupStartTime = performance.now();
-        // warm up token to avoid cold start, for production, you can warm up the token in the background every 1s
-        await universalAccount.warmUpToken({
-            chainId,
-            address,
-        });
-        const warmupEndTime = performance.now();
-        const warmupDuration = warmupEndTime - warmupStartTime;
-        warmupDurations.push(warmupDuration);
+        if (args.warmup) {
+            const warmupStartTime = performance.now();
+            // warm up token to avoid cold start, for production, you can warm up the token in the background every 1s
+            await universalAccount.warmUpToken({
+                chainId,
+                address,
+            });
+            const warmupEndTime = performance.now();
+            const warmupDuration = warmupEndTime - warmupStartTime;
+            warmupDurations.push(warmupDuration);
+        } else {
+            console.log('  warmup: skipped');
+        }
 
         const createBuyStartTime = performance.now();
         const transaction = await universalAccount.createBuyTransaction(
@@ -462,13 +483,19 @@ function getTradeToken(chain: string): { chainId: number, address: string } {
     // Cleanup WSS connection
     wssConnection.close();
 
-    const warmupStats = calculateStats(warmupDurations);
     const createBuyStats = calculateStats(createBuyDurations);
     const sendStats = calculateStats(sendDurations);
     const getTransactionStats = calculateStats(getTransactionDurations);
     const sendTotalStats = calculateStats(sendTotalDurations);
 
-    printStats('warmup', warmupStats);
+    console.log(`\ngetSmartAccountOptions: ${getSmartAccountOptionsDuration.toFixed(2)}ms`);
+
+    if (args.warmup) {
+        const warmupStats = calculateStats(warmupDurations);
+        printStats('warmup', warmupStats);
+    } else {
+        console.log('\nwarmup: disabled');
+    }
     printStats('createBuyTransaction', createBuyStats);
     printStats('sendTransaction', sendStats);
     printStats('getTransaction', getTransactionStats);
