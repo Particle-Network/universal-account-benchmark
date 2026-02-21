@@ -1,6 +1,6 @@
 # Universal Account Benchmark
 
-Transaction speed benchmark tool for Universal Account SDK.
+Transaction speed benchmark tool for [Particle Network Universal Account](https://developers.particle.network/).
 
 ## Result
 
@@ -47,9 +47,11 @@ Source Chain: SOLANA , Target Chain: BASE
 
 - Transaction speed testing for Universal Account
 - Support for multiple chains (Solana, BSC, Base, Ethereum, etc.)
-- **Dual confirmation mode**: WebSocket and polling race simultaneously, whichever completes first wins
+- Optional WebSocket for transaction status updates (race with polling)
+- Optional user-assets WSS subscription for real-time balance updates
 - Statistical analysis of transaction times
 - Classic and EIP-7702 mode support
+- Per-method Datadog tracing via separate RPC endpoints
 
 ## Installation
 
@@ -72,7 +74,13 @@ Required environment variables:
 - `PRIVATE_KEY_SOLANA`: Private key for Solana transactions
 - `PRIVATE_KEY_BSC`: Private key for BSC transactions
 - `PRIVATE_KEY_BASE`: Private key for Base transactions
+- `PRIVATE_KEY_ETHEREUM`: Private key for Ethereum transactions
 
+Optional environment variables:
+- `UNIVERSALX_RPC_URL`: Custom RPC endpoint (default: `https://universal-rpc-proxy.particle.network`)
+- `UNIVERSALX_WSS_URL`: Custom WSS endpoint (default: `wss://universal-app-ws-proxy.particle.network`)
+
+> **Note:** Only use EVM private keys, even for Solana — Universal Account uses ECDSA on Solana as well.
 
 ## Usage
 
@@ -92,25 +100,39 @@ npm start -- --sourceChain=solana --targetChain=bsc --runTimes=5
 # Adjust fee rate and MEV settings
 npm start -- --feeRate=2 --bribeAmount=0.001 --mevProtection=1
 
+# Enable WSS for transaction tracking (race with polling)
+npm start -- --runTimes=3 --sourceChain=solana --wssMode=true
+
+# Skip token warmup
+npm start -- --runTimes=3 --sourceChain=solana --warmup=false
+
+# Only test account setup + user-assets WSS (no transactions)
+npm start -- --runTimes=0 --userAssetsWss=true
+
 # Show help
 npm start -- --help
 ```
 
 ## Address
 
-1. Use `--runTime=0` to get the Universal Account addresses
-2. If your are using `--uaMode=7702`, evm chain' Universal Account address is also the EOA address
+1. Use `--runTimes=0` to get the Universal Account addresses without running transactions
+2. If you are using `--uaMode=7702`, the EVM chain's Universal Account address is also the EOA address
 
 ## Command Line Options
 
-- `--uaMode=<classic|7702>`: Universal Account mode (default: classic)
-- `--runTimes=<number>`: Number of benchmark runs (default: 1)
-- `--sourceChain=<chain>`: Source chain (default: solana)
-- `--targetChain=<chain>`: Target chain (default: sourceChain)
-- `--feeRate=<number>`: Priority fee rate (default: 1)
-- `--bribeAmount=<number>`: Solana MEV tip amount (default: 0)
-- `--mevProtection=<number>`: MEV protection level (default: 2)
-- `--help, -h`: Show help message
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--uaMode=<classic\|7702>` | `classic` | Universal Account mode |
+| `--runTimes=<number>` | `1` | Number of benchmark runs (0 = skip transactions) |
+| `--sourceChain=<chain>` | `solana` | Source chain |
+| `--targetChain=<chain>` | same as source | Target chain |
+| `--feeRate=<number>` | `1` | Priority fee rate |
+| `--bribeAmount=<number>` | `0` | Solana MEV tip amount |
+| `--mevProtection=<number>` | `2` | MEV protection level |
+| `--wssMode=<true\|false>` | `false` | Use WebSocket for transaction status updates |
+| `--userAssetsWss=<true\|false>` | `false` | Subscribe to user-assets WSS for real-time balance updates |
+| `--warmup=<true\|false>` | `true` | Enable token warmup before transactions |
+| `--help, -h` | | Show help message |
 
 ## Supported Chains
 
@@ -138,58 +160,20 @@ npm start -- --help
 
 The benchmark measures the following timing metrics:
 
-1. **getTokenPair**: Time to fetch token pair information
-2. **createBuyTransaction**: Time to create buy transaction
-3. **sendTransaction**: Time to send transaction
-4. **getTransaction**: Time to confirm transaction (WSS and polling race simultaneously, prints which method won)
-5. **sendTransactionTotal**: Total time from send to confirmation
+1. **getSmartAccountOptions**: Time to fetch smart account configuration
+2. **getPrimaryAssets**: Time to fetch portfolio balances
+3. **warmup**: Token warmup time (cold start avoidance)
+4. **createBuyTransaction**: Time to create a buy transaction
+5. **sendTransaction**: Time to submit the transaction
+6. **getTransaction**: Time to confirm transaction completion (polling, or WSS+polling race when `--wssMode=true`)
+7. **sendTransactionTotal**: Total time from send to confirmation
+8. **createBuy+sendTotal**: End-to-end from transaction creation to confirmation
 
-Statistics provided for each metric:
-- Mean
-- Median
-- Min/Max
-- Standard Deviation
-- All individual values
+When `--userAssetsWss=true`:
+9. **userAssetsWssInitialLoad**: Initial asset delivery time via WSS
+10. **userAssetsWssPostTxUpdate**: Balance update time after transaction completion
 
-## Example Output
-
-```
----- Using RPC -  https://universal-rpc-proxy.particle.network ----
----- Using WSS -  wss://universal-app-ws-proxy.particle.network ----
----- Creating WSS connection for racing with polling ----
-Running benchmark 5 time(s)...
-
-Your UA EVM Address: 0x...
-Your UA Solana Address: ...
-
-Run 1/5:
-  createBuyTransaction: 1234.56ms
-  sendTransaction: 234.56ms
-  Explorer URL: https://universalx.app/activity/details?id=...
-  
-  getTransaction: 2345.67ms (used: wss)
-  sendTransactionTotal: 2580.23ms
-  ...
-
-Run 2/5:
-  createBuyTransaction: 1100.00ms
-  sendTransaction: 200.00ms
-  getTransaction: 1800.00ms (used: polling)
-  sendTransactionTotal: 2000.00ms
-  ...
-
-getTokenPair Statistics:
-  Runs: 5
-  Mean: 1234.56ms
-  Median: 1230.00ms
-  Min: 1200.00ms
-  Max: 1280.00ms
-  Std Dev: 25.34ms
-  ...
-
-Source Chain: SOLANA , Target Chain: SOLANA
-Using RPC: https://universal-rpc-proxy.particle.network , Fee Rate: 1 , Bribe Amount: 0 , Mode: WSS+Polling Race
-```
+Statistics provided for each metric: mean, median, min, max, standard deviation, and all individual values.
 
 ## Development
 
@@ -200,6 +184,10 @@ npm run build
 # Run from source
 npm run dev
 ```
+
+## Example
+
+For a complete integration example, see [universal-account-example](https://github.com/Particle-Network/universal-account-example).
 
 ## License
 
